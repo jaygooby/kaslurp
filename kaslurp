@@ -1,0 +1,167 @@
+#!/bin/bash
+#
+# kaslurp - a REPL wrapper for kaput
+# https://github.com/davidchalifoux/kaput-cli
+# a put.io client
+#
+# MIT Licence. Copyright 2021. jay@gooby.org
+# https://twitter.com/jaygooby
+#
+# On my Raspberry Pi, kaput is slow to start due
+# to the limited system resources. kaslurp
+# lets you download multiple put.io files without
+# needing to restart kaput each time.
+# You can make and change the directory the files are saved to,
+# you can check what existing files you have from
+# within the kaslurp and you can also call it to
+# quickly background download files without needing to
+# wait for the kaput UI.
+#
+# By default you'll start with a REPL in your $MEDIADIR
+# but if you call kaslurp like this:
+#
+# kaslurp 123456789
+#
+# it will spawn a background download of the put.io
+# media id 123456789 saving it to your current pwd
+# and return you to the command line.
+#
+# If you call it like this:
+#
+# kaslurp -d /tmp 123456789
+#
+# It will first cd to /tmp and background download the
+# the file there.
+#
+# You can also override the starting MEDIADIR location
+# by calling like this:
+#
+# kaslurp -d /tmp
+#
+# You'll get the REPL but be in /tmp
+set -eu
+
+# Change this to your own media folder location
+# MEDIADIR=/path/to/your/media/folder
+MEDIADIR=/mnt/video
+
+# check dependencies
+for dependency in kaput locate; do
+  which $dependency > /dev/null || (echo "You need to have '$dependency' installed and in your \$PATH" >&2 && exit 1)
+done
+
+switches () {
+  echo -e "Usage:\tkaslurp\n\t\tStart the REPL\n" >&2
+  echo -e "\tkaslurp -d /some/path\n\t\tStart the REPL at /some/path\n" >&2
+  echo -e "\tkaslurp <put.io file ID>\n\t\tStart a background download of <ID> to your current pwd and exit\n" >&2
+  echo -e "\tkaslurp -d /some/path <put.io file ID>\n\t\tStart a background download of <ID> to /some/path and exit\n" >&2
+  exit 1
+}
+
+usage () {
+  echo "You can search for existing files in your $MEDIADIR folder"
+  echo "using a string or regex. The search will be case-insensitive."
+  echo -e "To exit enter q\n"
+  echo -e "To download a file from kaput, d <ID> e.g. d 123456\n"
+  echo -e "To cd to a different directory, cd /some/path\n"
+  echo -e "To make a different directory, mkdir /some/path\n"
+  echo -e "To list files, ls or ls /some/path\n"
+}
+
+background_download () {
+  # kaput will quit if it thinks it can't write to stdout
+  (nohup kaput download $1 &) &> /dev/null
+}
+
+list_dir () {
+  dir="${1:-$PWD}"
+  # expand ~ to $HOME
+  # https://stackoverflow.com/a/15859195/391826
+  dir="${dir/#~/$HOME}"
+  ls -lh "$dir"
+}
+
+locate_file () {
+  echo "looking for $request"
+  # we use || true because `set -eu` will quit the script on a locate exit 1 status
+  # if it can't find a match, which we don't want
+  locate --regex -i "$request" | egrep -E "^/mnt/video/" || true
+}
+
+mk_dir () {
+  dir="${1:-}"
+  if [ -z "$dir" ]; then
+    echo "missing dir"
+  else
+    mkdir "$dir"
+  fi
+}
+
+# When we start, check if we were called with -d <some dir>
+# to change our starting directory
+starting_dir="$MEDIADIR"
+while getopts ":d:" opt; do
+  case ${opt} in
+    d )
+      starting_dir=$OPTARG
+      ;;
+    \? )
+      switches
+      ;;
+    : )
+      echo "Missing argument: -${OPTARG} requires a directory" 1>&2
+      switches
+      ;;
+  esac
+done
+
+shift $((OPTIND -1))
+# Only cd to the starting directory if we're starting in REPL mode
+# or if we've been given a -d path
+putio_id=${1:-}
+[[ -z "$putio_id" || "$MEDIADIR" != "$starting_dir" ]] && cd "$starting_dir"
+
+# So we can match for numbers in the case statement
+shopt -s extglob
+
+# If we were started with a putio file ID start a
+# background download and then exit
+[ -n "$putio_id" ] && background_download $putio_id && echo Downloading $putio_id && exit 0
+
+# Otherwise, start in REPL mode
+while true; do
+  # change dir if we've been asked to
+  [ "$PWD" != "$starting_dir" ] && cd "${starting_dir/#~/$HOME}" && starting_dir="$PWD"
+  # -e means we get tab expansion for files and folders :D
+  read -e -u 1 -p "$PWD kaslurp> " request
+
+  case "$request" in
+
+    "") usage
+      ;;
+    \?) usage
+      ;;
+    cd\ *) starting_dir="${request#* }"
+      # we can't just call cd here because we're in a child process
+      # and it won't affect the parent. Save the new dir location
+      # for the parent process to change to, at the start of the REPL loop
+      ;;
+    d\ *) echo "Downloading "${request#* }" in the background"
+      background_download "${request#* }"
+      ;;
+    ls) list_dir
+      ;;
+    ls\ *) list_dir "${request#* }"
+      ;;
+    mkdir\ *) mk_dir "${request#* }"
+      ;;
+    q) exit 0
+      ;;
+    quit) exit 0
+      ;;
+    exit) exit 0
+      ;;
+    *) locate_file $request
+      ;;
+  esac
+done
