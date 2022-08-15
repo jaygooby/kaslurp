@@ -70,7 +70,10 @@ usage () {
 
 background_download () {
   # kaput will quit if it thinks it can't write to stdout
-  (nohup kaput download $1 &) &> /dev/null
+
+  # we might have grabbed a zip, so try and extract it and make it
+  # readable by everyone, then clean up
+  (nohup kaput download $1 && unzip *.zip && chmod +r * && rm *.zip &) &> /dev/null
 }
 
 list_dir () {
