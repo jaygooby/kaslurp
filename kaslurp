@@ -103,6 +103,13 @@ mk_dir () {
 # When we start, check if we were called with -d <some dir>
 # to change our starting directory
 starting_dir="$MEDIADIR"
+
+# if we're in a subdirectory of MEDIADIR,
+# set this to our starting_dir
+# https://unix.stackexchange.com/questions/6435/how-to-check-if-pwd-is-a-subdirectory-of-a-given-path
+[ "${PWD##$MEDIADIR}" != "$PWD" ] && starting_dir="$PWD"
+
+# now check for options
 while getopts ":d:" opt; do
   case ${opt} in
     d )
