@@ -62,10 +62,11 @@ usage () {
   echo "You can search for existing files in your $MEDIADIR folder"
   echo "using a string or regex. The search will be case-insensitive."
   echo -e "To exit enter q\n"
-  echo -e "To download a file from kaput, d <ID> e.g. d 123456\n"
-  echo -e "To cd to a different directory, cd /some/path\n"
-  echo -e "To make a different directory, mkdir /some/path\n"
-  echo -e "To list files, ls or ls /some/path\n"
+  echo -e "To check whether you're logged in to put.io: s\n"
+  echo -e "To download a file from kaput: d <ID> e.g. d 123456\n"
+  echo -e "To cd to a different directory: cd /some/path\n"
+  echo -e "To make a different directory: mkdir /some/path\n"
+  echo -e "To list files: ls or ls /some/path\n"
 }
 
 background_download () {
@@ -73,7 +74,11 @@ background_download () {
 
   # we might have grabbed a zip, so try and extract it and make it
   # readable by everyone, then clean up
-  (nohup kaput download $1 && unzip *.zip && chmod +r * && rm *.zip &) &> /dev/null
+  (nohup kaput files download $1 && unzip *.zip && chmod +r * && rm *.zip &) &> /dev/null
+}
+
+status () {
+  kaput whoami
 }
 
 list_dir () {
@@ -170,6 +175,8 @@ while true; do
     quit) exit 0
       ;;
     exit) exit 0
+      ;;
+    s) status
       ;;
     *) locate_file $request
       ;;
